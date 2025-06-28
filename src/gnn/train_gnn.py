@@ -69,6 +69,12 @@ def train_one_epoch(model, train_graph, optimizer, criterion, device):
     
     out = model.decode(z, edge_label_index)
     loss = criterion(out, edge_label)
+
+    # let's use a regularization term to prevent overfitting
+    l2_lambda = 1e-5
+    l2_reg = sum(p.pow(2.0).sum() for p in model.parameters())
+    loss = loss + l2_lambda * l2_reg
+
     loss.backward()
     optimizer.step()
     return loss.item()
@@ -217,3 +223,4 @@ def run_gnn_evaluation_pipeline():
 
 if __name__ == "__main__":
     run_gnn_evaluation_pipeline()
+

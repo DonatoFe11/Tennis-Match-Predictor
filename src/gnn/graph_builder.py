@@ -59,3 +59,4 @@ def create_graph_data(df, test_year=2023):
     print(f"Test edges prepared: {test_edge_label_index.shape[1]} total edges for evaluation.")
     
     return train_graph_data, test_edge_label_index, test_edge_label, player_to_idx, num_train_nodes
+
