@@ -1,5 +1,3 @@
-# src/baseline/train_baseline.py (Version without resume logic)
-
 import pandas as pd
 import numpy as np
 import time
@@ -13,7 +11,6 @@ from tqdm import tqdm
 import re
 import json
 
-# --- BOILERPLATE TO ADD PROJECT ROOT TO PYTHONPATH ---
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
@@ -27,11 +24,14 @@ def prepare_modeling_data(enriched_df):
     Takes the feature-enriched DataFrame and prepares the final X and y matrices for modeling.
     """
     print("\n--- Structuring Final DataFrame for Modeling ---")
+
+    # --- 1. Casually swap winner and loser roles for half of the matches ---
+    # To ensure that the model can learn from both perspectives, we randomly swap winner and loser roles for half of the matches.
     np.random.seed(42)
     swap_mask = np.random.rand(len(enriched_df)) < 0.5
     
-    df1 = enriched_df.copy()
-    df2 = enriched_df.copy()
+    df1 = enriched_df.copy() # Here the winner is p1
+    df2 = enriched_df.copy() # Here the loser is p1
 
     # Define all columns to be renamed for p1 and p2
     p_cols = ['id', 'name', 'elo', 'rank', 'age', 'h2h', 'fatigue', 'streak']
@@ -49,15 +49,17 @@ def prepare_modeling_data(enriched_df):
 
     model_df = pd.concat([df1[~swap_mask], df2[swap_mask]]).sort_index()
 
-    # Engineer differential features
+    # --- 2. Engineer differential features ---
+    # Calculate the difference between p1 and p2 for each feature 
     for col in ['elo', 'rank', 'h2h', 'fatigue', 'streak', 'age']:
         if f'p1_{col}' in model_df.columns and f'p2_{col}' in model_df.columns:
             model_df[f'{col}_diff'] = model_df[f'p1_{col}'] - model_df[f'p2_{col}']
 
+    # --- 3. Handling categorical features ---
     surface_dummies = pd.get_dummies(model_df['surface'], prefix='surface', dummy_na=False)
     model_df = pd.concat([model_df, surface_dummies], axis=1)
 
-    # Programmatically define features
+    # Programmatically define features - selecting columns that contain '_diff' or 'surface_'
     features = [col for col in model_df.columns if '_diff' in col]
     features.extend([col for col in model_df.columns if 'surface_' in col])
     target = 'p1_wins'
@@ -65,10 +67,11 @@ def prepare_modeling_data(enriched_df):
     # Drop rows with NaNs in crucial columns
     final_model_df = model_df.dropna(subset=['rank_diff', 'age_diff'])
     
-    X = final_model_df[features].copy()
+    # Create X as to only include the engineered features
+    X = final_model_df[features].copy() 
     y = final_model_df[target].copy()
 
-    # Sanitize column names
+    # Sanitize column names - delete any special characters that might cause issues
     X.columns = [re.sub(r"\[|\]|<", "_", col) for col in X.columns]
     
     print("Final X and y matrices created.")
@@ -84,8 +87,8 @@ def run_evaluation():
     # --- Step 3: Prepare Data for Modeling ---
     X, y = prepare_modeling_data(enriched_df)
 
-    # --- Step 4: Robust Evaluation ---
-    print("\n--- Section 4: Starting Robust Evaluation with JSON Logging ---")
+    # --- Step 4: Evaluation ---
+    print("\n--- Section 4: Starting Evaluation with JSON Logging ---")
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
@@ -104,6 +107,7 @@ def run_evaluation():
     for i in tqdm(range(N_RUNS), desc="Overall Baseline Runs"):
         run_start_time = time.time()
         
+        # Ensure that traning data is always before the test data
         tscv = TimeSeriesSplit(n_splits=5)
         oof_preds, oof_true = [], []
         best_params_per_fold = []

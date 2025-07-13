@@ -24,8 +24,8 @@ def create_graph_data(df, test_year=2023):
     train_df.dropna(subset=['winner_idx', 'loser_idx'], inplace=True)
     
     train_edge_index = torch.tensor([
-        train_df['winner_idx'].values,
-        train_df['loser_idx'].values
+        train_df['winner_idx'].values, # start nodes (winners)
+        train_df['loser_idx'].values # end nodes (losers)
     ], dtype=torch.long)
     
     train_graph_data = Data(num_nodes=num_train_nodes, edge_index=train_edge_index)
@@ -33,6 +33,7 @@ def create_graph_data(df, test_year=2023):
 
     # --- 3. Prepare the TEST Set (Positive and Negative Edges) ---
     test_df = df[df['tourney_date'].dt.year >= test_year].copy()
+    # Filter test_df to only include known players
     test_df_known = test_df[
         test_df['winner_id'].isin(player_to_idx) & 
         test_df['loser_id'].isin(player_to_idx)
@@ -40,12 +41,14 @@ def create_graph_data(df, test_year=2023):
     test_df_known['winner_idx'] = test_df_known['winner_id'].map(player_to_idx)
     test_df_known['loser_idx'] = test_df_known['loser_id'].map(player_to_idx)
 
+    # Prepare positive and negative edges for testing
     pos_test_edge_index = torch.tensor([
         test_df_known['winner_idx'].values,
         test_df_known['loser_idx'].values
     ], dtype=torch.long)
     pos_test_edge_label = torch.ones(pos_test_edge_index.size(1))
 
+    # For each positive edge, create a negative edge (a game that did not happen)
     neg_test_edge_index = negative_sampling(
         edge_index=train_graph_data.edge_index,
         num_nodes=train_graph_data.num_nodes,

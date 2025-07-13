@@ -13,6 +13,7 @@ def load_and_prepare_data(path_pattern='data/tennis_atp/atp_matches_*.csv', star
     all_files = glob.glob(path_pattern)
     year_pattern = re.compile(r'atp_matches_(\d{4})\.csv$')
     
+    # Filter files based on the specified start year
     all_files_filtered = []
     for f in all_files:
         match = year_pattern.search(f)
@@ -23,11 +24,13 @@ def load_and_prepare_data(path_pattern='data/tennis_atp/atp_matches_*.csv', star
         raise FileNotFoundError(f"No match files found for pattern {path_pattern} from year {start_year} onwards.")
 
     print(f"Loading {len(all_files_filtered)} files from year {start_year} onwards...")
+    # Load all sorted files into a single DataFrame
     li = [pd.read_csv(filename, index_col=None, header=0, low_memory=False) for filename in sorted(all_files_filtered)]
     data = pd.concat(li, axis=0, ignore_index=True)
     
     print(f"Loaded {len(data)} matches.")
 
+    # --- Basic data type cleaning ---
     # Convert tourney_date to datetime objects
     data['tourney_date'] = pd.to_datetime(data['tourney_date'], format='%Y%m%d')
 

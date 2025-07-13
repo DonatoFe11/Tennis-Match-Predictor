@@ -1,5 +1,3 @@
-# src/gnn/train_gnn.py (Final Version with Robust Evaluation and Embedding Saving)
-
 import os
 import sys
 import json
@@ -15,20 +13,17 @@ from torch_geometric.nn import SAGEConv
 from torch_geometric.data import Data
 from torch_geometric.utils import negative_sampling
 
-# --- Add Project Root to Python Path ---
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 from src.data_processing.data_loader import load_and_prepare_data
 from src.baseline.feature_engineering import engineer_historical_features
 
-# ==============================================================================
 # SECTION 1: GNN MODEL AND HELPER FUNCTIONS
-# ==============================================================================
 
 class GNNLinkPredictor(torch.nn.Module):
     def __init__(self, num_nodes, embedding_dim, hidden_channels, out_channels, dropout_rate=0.5):
         super().__init__()
-        self.embedding = torch.nn.Embedding(num_nodes, embedding_dim)
+        self.embedding = torch.nn.Embedding(num_nodes, embedding_dim) # crete a lookup table for node embeddings
         self.conv1 = SAGEConv(embedding_dim, hidden_channels)
         self.conv2 = SAGEConv(hidden_channels, out_channels)
         self.dropout_rate = dropout_rate
@@ -42,7 +37,7 @@ class GNNLinkPredictor(torch.nn.Module):
     def encode(self, edge_index):
         x = self.embedding.weight
         x = self.conv1(x, edge_index).relu()
-        x = F.dropout(x, p=self.dropout_rate, training=self.training)
+        x = F.dropout(x, p=self.dropout_rate, training=self.training) # avoid overfitting
         return self.conv2(x, edge_index)
 
     def decode(self, z, edge_label_index):
@@ -56,17 +51,20 @@ def train_one_epoch(model, train_graph, optimizer, criterion, device):
     
     z = model.encode(train_graph.edge_index)
     
+    # For each epoch, we sample negative edges
     neg_edge_index = negative_sampling(
         edge_index=train_graph.edge_index, num_nodes=train_graph.num_nodes,
         num_neg_samples=train_graph.edge_index.size(1)
     ).to(device)
     
+    # Concatenate positive and negative edges for training
     edge_label_index = torch.cat([train_graph.edge_index, neg_edge_index], dim=-1)
     edge_label = torch.cat([
         torch.ones(train_graph.edge_index.size(1)), 
         torch.zeros(neg_edge_index.size(1))
     ], dim=0).to(device)
     
+    # Make predictions
     out = model.decode(z, edge_label_index)
     loss = criterion(out, edge_label)
 
@@ -95,11 +93,14 @@ def test(model, train_graph, test_idx, test_labels):
     
     return auc, loss, probs
 
-# ==============================================================================
 # SECTION 2: MAIN EVALUATION PIPELINE
-# ==============================================================================
 
 def run_gnn_evaluation_pipeline():
+    np.random.seed(42)
+    torch.manual_seed(42)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(42)
+        
     # --- Step 1 & 2: Load Data and Engineer Features ---
     raw_df = load_and_prepare_data(path_pattern='data/tennis_atp/atp_matches_*.csv')
     enriched_df = engineer_historical_features(raw_df)
